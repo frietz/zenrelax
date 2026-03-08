@@ -21,10 +21,13 @@
 #define DEFAULT_MODE 1
 #define WIDTH 80
 #define HEIGHT 24
+#define MAX_COLS 200
+#define MAX_ROWS 100
 #define PI 3.14159265359
 
 // ANSI escape helpers
 #define CLEAR_LINE "\x1b[2K"
+#define CLEAR_SCREEN "\x1b[2J"
 #define MOVE_HOME "\x1b[H"
 #define HIDE_CURSOR "\x1b[?25l"
 #define SHOW_CURSOR "\x1b[?25h"
@@ -47,14 +50,20 @@ void get_term_size() {
         rows = w.ws_row;
         cols = w.ws_col;
     }
-    if (rows > 100) rows = 100; // cap for perf
-    if (cols > 200) cols = 200;
+    if (rows > MAX_ROWS) rows = MAX_ROWS;
+    if (cols > MAX_COLS) cols = MAX_COLS;
 }
 
 // Render char with color
 void render_char(char ch, int x, int y, int intensity) {
     int color = palette[intensity % 16];
     printf("\x1b[%d;%df\x1b[38;5;%dm%c\x1b[0m", y+1, x+1, color, ch);
+}
+
+// Bounds-checked render
+void render_char_safe(char ch, int x, int y, int intensity) {
+    if (x >= 0 && x < cols && y >= 0 && y < rows)
+        render_char(ch, x, y, intensity);
 }
 
 void resize_handler(int sig) {
@@ -69,7 +78,7 @@ void int_handler(int sig) {
 
 // Simple plasma mode
 void render_plasma() {
-    char buf[256];
+    char buf[MAX_COLS + 1];
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
             double cx = (double)x / cols * 4 * PI;
@@ -91,7 +100,7 @@ void render_plasma() {
 void render_mandelbrot() {
     double cr = -0.7 + 0.27 * sin(time_step * 0.1);
     double ci = sin(time_step * 0.05) * 0.27;
-    char buf[256];
+    char buf[MAX_COLS + 1];
     for (int y = 0; y < rows; y++) {
         int max_iter = 0;
         for (int x = 0; x < cols; x++) {
@@ -136,14 +145,13 @@ void render_particles() {
         inited = 1;
     }
     // Fade trails
-    printf("\x1b[2J\x1b[H"); // Gentle clear
+    printf(CLEAR_SCREEN MOVE_HOME);
     for (int i = 0; i < NPART; i++) {
         trail[i] *= 0.95;
         int ix = px[i], iy = py[i];
-        if (ix >= 0 && ix < cols && iy >= 0 && iy < rows) {
-            render_char('*', ix, iy, (int)(trail[i] * 15));
+        render_char_safe('*', ix, iy, (int)(trail[i] * 15));
+        if (ix >= 0 && ix < cols && iy >= 0 && iy < rows)
             trail[i] = fmin(1.0, trail[i] + 0.1);
-        }
         // Physics: gravity + waves
         double wave = sin(px[i]*0.1 + time_step) * 0.3;
         vx[i] += sin(time_step + py[i]*0.05) * 0.01 + wave * 0.02;
@@ -158,7 +166,7 @@ void render_particles() {
 
 // Quantum Flow (Perlin-like)
 void render_quantum_flow() {
-    char buf[256];
+    char buf[MAX_COLS + 1];
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
             double n1 = sin(x*0.1 + time_step*0.5) * cos(y*0.1 + time_step*0.3);
@@ -174,38 +182,47 @@ void render_quantum_flow() {
 }
 
 void render_orbitals() {
-    static double ox[4], oy[4], ovx[4], ovy[4];
+    #define N_ORBIT 12
+    static double theta[N_ORBIT], r[N_ORBIT], omega[N_ORBIT], phase[N_ORBIT], otrail[N_ORBIT];
     static int inited = 0;
     if (!inited) {
-        ox[0] = cols / 4.0; ox[1] = 3 * cols / 4.0; ox[2] = cols / 2.0; ox[3] = cols / 2.0;
-        oy[0] = rows / 4.0; oy[1] = rows / 4.0; oy[2] = 3 * rows / 4.0; oy[3] = rows / 2.0;
-        ovx[0] = 0.08; ovx[1] = -0.08; ovx[2] = 0.05; ovx[3] = -0.05;
-        ovy[0] = 0.08; ovy[1] = 0.08; ovy[2] = -0.05; ovy[3] = 0.12;
+        double max_r = fmin(rows, cols) / 2.5;
+        for (int i = 0; i < N_ORBIT; i++) {
+            r[i] = 8 + max_r * (0.15 + 0.5 * i / (N_ORBIT - 1.0));
+            omega[i] = 0.18 / ((i % 4) + 1.5);
+            phase[i] = i * 2 * PI / N_ORBIT;
+            theta[i] = phase[i];
+            otrail[i] = 1.0;
+        }
         inited = 1;
     }
-    printf("\x1b[2J\x1b[H");
-    for (int i = 0; i < 4; i++) {
-        double dx = 0, dy = 0;
-        for (int j = 0; j < 4; j++) {
-            if (i == j) continue;
-            double ddx = ox[j] - ox[i], ddy = oy[j] - oy[i];
-            double dist = sqrt(ddx*ddx + ddy*ddy) + 0.1;
-            dx += ddx / dist * 0.0005;
-            dy += ddy / dist * 0.0005;
-        }
-        ovx[i] += dx + sin(time_step + i) * 0.001;
-        ovy[i] += dy + cos(time_step + i) * 0.001;
-        ox[i] += ovx[i]; oy[i] += ovy[i];
-        ovx[i] *= 0.999; ovy[i] *= 0.999;
-        if (ox[i] < 0 || ox[i] > cols) ovx[i] *= -1;
-        if (oy[i] < 0 || oy[i] > rows) ovy[i] *= -1;
-        render_char('@', (int)ox[i], (int)oy[i], 15);
-        // Trails
-        for (double t = 0.9; t > 0.1; t -= 0.2) {
-            int tx = (int)(ox[i]-ovx[i]/t), ty = (int)(oy[i]-ovy[i]/t);
-            if (tx >= 0 && tx < cols && ty >= 0 && ty < rows)
-                render_char('.', tx, ty, 5);
-        }
+    printf(CLEAR_SCREEN MOVE_HOME);
+    double cx = cols / 2.0;
+    double cy = rows / 2.0;
+    double r_cap = fmin(rows, cols) / 2.2;
+    // Glow offsets: dx, dy, char, intensity_scale
+    static const int glow_dx[] = {-1, 1, 0, 0, -1, 1, -1, 1};
+    static const int glow_dy[] = { 0, 0,-1, 1, -1,-1,  1, 1};
+    static const char glow_ch[] = {'.','.','.','.',',',',',',',',' };
+    static const double glow_scale[] = {6,6,6,6, 3,3,3,3};
+    for (int i = 0; i < N_ORBIT; i++) {
+        // Update orbit
+        double puls = 0.03 * sin(time_step * 2.0 + phase[i]);
+        r[i] += puls;
+        r[i] = fmax(5.0, fmin(r_cap, r[i] * 0.998));
+        theta[i] += omega[i] + 0.008 * sin(time_step * 0.7 + i * 0.5);
+        double opx = cx + r[i] * cos(theta[i]);
+        double opy = cy + r[i] * sin(theta[i]);
+        int ix = (int)opx;
+        int iy = (int)opy;
+        int pidx = (int)(otrail[i] * 4.0);
+        char pch = "o*O@"[pidx > 3 ? 3 : pidx];
+        render_char_safe(pch, ix, iy, (int)(otrail[i] * 15));
+        // Glow
+        for (int g = 0; g < 8; g++)
+            render_char_safe(glow_ch[g], ix + glow_dx[g], iy + glow_dy[g],
+                             (int)(otrail[i] * glow_scale[g]));
+        otrail[i] = fmin(1.0, otrail[i] * 0.96 + 0.12);
     }
 }
 
@@ -230,6 +247,7 @@ void show_menu() {
 
 int main(int argc, char **argv) {
     srand(time(NULL));
+    setvbuf(stdout, NULL, _IOFBF, 8192);
     printf(HIDE_CURSOR);
     get_term_size();
 
@@ -248,7 +266,7 @@ int main(int argc, char **argv) {
         if (mode < 1 || mode > MAX_MODES) mode = DEFAULT_MODE;
     }
 
-    printf("\x1b[?1049h\x1b[2J\x1b[H");
+    printf("\x1b[?1049h" CLEAR_SCREEN MOVE_HOME);
     printf("ZenRelax Mode %d - Press 'q' or ESC to quit\n", mode);
     fflush(stdout);
 
@@ -265,7 +283,7 @@ int main(int argc, char **argv) {
     while (running) {
         if (resize_flag) {
             get_term_size();
-            printf("\x1b[2J\x1b[H");
+            printf(CLEAR_SCREEN MOVE_HOME);
             fflush(stdout);
             resize_flag = 0;
         }
@@ -290,6 +308,6 @@ int main(int argc, char **argv) {
     }
 
     tcsetattr(STDIN_FILENO, TCSADRAIN, &oldt);
-    printf("\x1b[?1049l\x1b[?25h\x1b[2J\x1b[H");
+    printf("\x1b[?1049l" SHOW_CURSOR CLEAR_SCREEN MOVE_HOME);
     return 0;
 }
