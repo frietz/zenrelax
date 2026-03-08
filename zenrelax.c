@@ -33,8 +33,11 @@
 #define HIDE_CURSOR "\x1b[?25l"
 #define SHOW_CURSOR "\x1b[?25h"
 
-// Color palette for soothing blues/greens (ANSI 256)
-int palette[16] = {16, 19, 21, 34, 35, 36, 39, 43, 44, 49, 73, 149, 152, 153, 154, 155};
+// Color palettes (ANSI 256)
+static const int palette_default[16] = {16, 19, 21, 34, 35, 36, 39, 43, 44, 49, 73, 149, 152, 153, 154, 155};
+static const int palette_nature[16]  = {16, 22, 23, 28, 34, 35, 36, 42, 43, 48, 49, 114, 150, 151, 154, 155};
+static const int palette_cosmic[16]  = {16, 17, 18, 19, 20, 21, 55, 56, 57, 63, 99, 105, 141, 147, 153, 189};
+const int *active_palette = palette_default;
 
 // Global state
 int rows = HEIGHT, cols = WIDTH;
@@ -97,7 +100,7 @@ void fb_render() {
         for (int x = 0; x < cols; x++) {
             int intensity = fb_int[y][x];
             char ch = trail_ch[intensity * (nch - 1) / 15];
-            int color = palette[intensity];
+            int color = active_palette[intensity];
             if (color != prev_color) {
                 pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
                 prev_color = color;
@@ -135,7 +138,7 @@ void render_plasma() {
 
             double t = fmod((value + 1.0) * 0.5 + time_step * 0.025, 1.0);
             int color_idx = (int)(t * 15.999);
-            int color = palette[color_idx];
+            int color = active_palette[color_idx];
             if (color != prev_color) {
                 pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
                 prev_color = color;
@@ -185,7 +188,7 @@ void render_mandelbrot() {
                 color_idx = (int)(t * 15.999);
                 ch = " .:-=+*#%@"[(int)fabs(fmod(smooth, 10.0))];
             }
-            int color = palette[color_idx];
+            int color = active_palette[color_idx];
             if (color != prev_color) {
                 pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
                 prev_color = color;
@@ -302,7 +305,7 @@ void render_quantum_flow() {
             if (ct < 0)
                 ct += 1.0;
             int color_idx = (int)(ct * 15.999);
-            int color = palette[color_idx];
+            int color = active_palette[color_idx];
             if (color != prev_color) {
                 pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
                 prev_color = color;
@@ -472,7 +475,7 @@ void render_aurora() {
             if (ct < 0)
                 ct += 1.0;
             int color_idx = (int)(ct * 15.999);
-            int color = palette[color_idx];
+            int color = active_palette[color_idx];
             if (color != prev_color) {
                 pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
                 prev_color = color;
@@ -600,7 +603,7 @@ void render_metaballs() {
                 color_idx = ((int)(inner * 8 + 8 + time_step * 0.3)) % 16;
             }
 
-            int color = palette[color_idx];
+            int color = active_palette[color_idx];
             if (color != prev_color) {
                 pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
                 prev_color = color;
@@ -691,7 +694,7 @@ void render_life() {
                 ch = ' ';
                 color_idx = 0;
             }
-            int color = palette[color_idx];
+            int color = active_palette[color_idx];
             if (color != prev_color) {
                 pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
                 prev_color = color;
@@ -706,6 +709,19 @@ void render_life() {
 
 // ===== Mode dispatch =====
 void render_mode(int m) {
+    switch (m) {
+    case 6:
+    case 7:
+        active_palette = palette_nature;
+        break;
+    case 8:
+        active_palette = palette_cosmic;
+        break;
+    default:
+        active_palette = palette_default;
+        break;
+    }
+
     switch (m) {
     case 1:
         render_plasma();
