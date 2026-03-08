@@ -18,6 +18,14 @@ A soothing terminal screensaver written in pure C. Ten visual modes render calmi
 ## Build
 
 ```
+make               # optimized build
+make debug         # debug build for gdb
+make sanitize      # address + undefined behavior sanitizers
+```
+
+Or directly:
+
+```
 gcc zenrelax.c -o zenrelax -lm
 ```
 
@@ -36,3 +44,17 @@ Press `q`, `ESC`, or `Ctrl+C` to quit.
 - Alt screen buffer (restores terminal on exit)
 - Raw input mode for responsive key handling
 - Runs at ~20fps with buffered output
+
+## Development
+
+Install optional tools:
+
+```
+sudo apt install clang-format clang-tidy cppcheck valgrind clangd
+```
+
+```
+make format        # auto-format code
+make lint          # static analysis with cppcheck
+valgrind ./zenrelax 1   # memory leak check
+```
