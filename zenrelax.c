@@ -96,31 +96,56 @@ void render_plasma() {
     }
 }
 
-// Mandelbrot fractal
+// Julia set fractal with smooth per-pixel coloring
 void render_mandelbrot() {
-    double cr = -0.7 + 0.27 * sin(time_step * 0.1);
-    double ci = sin(time_step * 0.05) * 0.27;
-    char buf[MAX_COLS + 1];
+    // Orbit through interesting Julia set parameter space (near Douady rabbit)
+    double cr = -0.7269 + 0.18 * sin(time_step * 0.067);
+    double ci =  0.1889 + 0.18 * cos(time_step * 0.053);
+    // Gentle zoom breathing
+    double zoom = 2.0 + 0.8 * sin(time_step * 0.031);
+    double aspect = 2.0; // terminal chars are ~2x tall as wide
+    int max_iter = 64;
+    double log2 = log(2.0);
+
     for (int y = 0; y < rows; y++) {
-        int max_iter = 0;
+        char buf[MAX_COLS * 16 + 32];
+        int pos = 0;
+        int prev_color = -1;
+        pos += sprintf(buf + pos, "\x1b[%d;1f", y + 1);
         for (int x = 0; x < cols; x++) {
-            double zr = (x - cols/2.0) * 3.0 / cols + cr;
-            double zi = (y - rows/2.0) * 3.0 / rows + ci;
+            double zr = (x - cols / 2.0) / cols * zoom * aspect;
+            double zi = (y - rows / 2.0) / rows * zoom;
             int iter = 0;
-            double zt = zr, zi0 = zi;
-            while (iter < 32 && zr * zr + zi * zi < 4) {
-                double temp = zr * zr - zi * zi + zt;
-                zi = 2 * zr * zi + zi0;
+            while (iter < max_iter && zr * zr + zi * zi < 4.0) {
+                double temp = zr * zr - zi * zi + cr;
+                zi = 2.0 * zr * zi + ci;
                 zr = temp;
                 iter++;
             }
-            char ch = " .:-=+*#%@"[iter / 4];
-            buf[x] = ch;
-            if (iter > max_iter) max_iter = iter;
+            int color_idx;
+            char ch;
+            if (iter == max_iter) {
+                ch = ' ';
+                color_idx = 0;
+            } else {
+                // Smooth iteration count eliminates color banding
+                double abs_z = sqrt(zr * zr + zi * zi);
+                double smooth = iter + 1.0 - log(log(abs_z)) / log2;
+                // Animated color cycling for breathing effect
+                double t = fmod(smooth * 0.1 + time_step * 0.04, 1.0);
+                if (t < 0) t += 1.0;
+                color_idx = (int)(t * 15.999);
+                ch = " .:-=+*#%@"[(int)fabs(fmod(smooth, 10.0))];
+            }
+            int color = palette[color_idx];
+            if (color != prev_color) {
+                pos += sprintf(buf + pos, "\x1b[38;5;%dm", color);
+                prev_color = color;
+            }
+            buf[pos++] = ch;
         }
-        buf[cols] = '\0';
-        int color_idx = (int)((double)max_iter * 15.0 / 32.0);
-        printf("\x1b[%d;1f\x1b[38;5;%dm%s\x1b[0m", y+1, palette[color_idx % 16], buf);
+        pos += sprintf(buf + pos, "\x1b[0m");
+        fwrite(buf, 1, pos, stdout);
     }
 }
 
