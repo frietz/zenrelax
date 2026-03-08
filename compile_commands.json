@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "/home/frietz/zen-relax",
+    "command": "gcc -Wall -Wextra -O2 -o zenrelax zenrelax.c -lm",
+    "file": "zenrelax.c"
+  }
+]
