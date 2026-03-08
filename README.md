@@ -96,5 +96,8 @@ sudo apt install clang-format clang-tidy cppcheck valgrind clangd
 ```
 make format        # auto-format code
 make lint          # static analysis with cppcheck
+make gifs          # re-record mode GIFs (requires agg)
 valgrind ./zenrelax 1   # memory leak check
 ```
+
+To regenerate GIFs, install [agg](https://github.com/asciinema/agg/releases) and run `make gifs`.
