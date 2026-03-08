@@ -6,17 +6,17 @@
  * Compile: gcc zenrelax.c -o zenrelax -lm
  */
 
+#include <fcntl.h>
+#include <math.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include <time.h>
-#include <unistd.h>
-#include <termios.h>
-#include <fcntl.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <signal.h>
 #include <sys/select.h>
+#include <termios.h>
+#include <time.h>
+#include <unistd.h>
 
 #define MAX_MODES 10
 #define DEFAULT_MODE 1
@@ -34,7 +34,7 @@
 #define SHOW_CURSOR "\x1b[?25h"
 
 // Color palette for soothing blues/greens (ANSI 256)
-int palette[16] = {16,19,21,34,35,36,39,43,44,49,73,149,152,153,154,155};
+int palette[16] = {16, 19, 21, 34, 35, 36, 39, 43, 44, 49, 73, 149, 152, 153, 154, 155};
 
 // Global state
 int rows = HEIGHT, cols = WIDTH;
@@ -49,17 +49,27 @@ void get_term_size() {
         rows = w.ws_row;
         cols = w.ws_col;
     }
-    if (rows > MAX_ROWS) rows = MAX_ROWS;
-    if (cols > MAX_COLS) cols = MAX_COLS;
+    if (rows > MAX_ROWS)
+        rows = MAX_ROWS;
+    if (cols > MAX_COLS)
+        cols = MAX_COLS;
 }
 
-void resize_handler(int sig) { (void)sig; resize_flag = 1; }
-void int_handler(int sig) { (void)sig; running = 0; }
+void resize_handler(int sig) {
+    (void)sig;
+    resize_flag = 1;
+}
+void int_handler(int sig) {
+    (void)sig;
+    running = 0;
+}
 
 // --- Framebuffer for flicker-free particle modes ---
 static unsigned char fb_int[MAX_ROWS][MAX_COLS];
 
-void fb_clear() { memset(fb_int, 0, sizeof(fb_int)); }
+void fb_clear() {
+    memset(fb_int, 0, sizeof(fb_int));
+}
 
 void fb_fade(int amount) {
     for (int y = 0; y < rows; y++)
@@ -69,7 +79,8 @@ void fb_fade(int amount) {
 
 void fb_stamp(int x, int y, int intensity) {
     if (x >= 0 && x < cols && y >= 0 && y < rows) {
-        if (intensity > 15) intensity = 15;
+        if (intensity > 15)
+            intensity = 15;
         if (intensity > fb_int[y][x])
             fb_int[y][x] = intensity;
     }
@@ -116,8 +127,10 @@ void render_plasma() {
             double value = (v1 + v2 + v3 + v4) / 4.0;
 
             int ci = (int)((value + 1.0) * 6.499);
-            if (ci > 12) ci = 12;
-            if (ci < 0) ci = 0;
+            if (ci > 12)
+                ci = 12;
+            if (ci < 0)
+                ci = 0;
             char ch = " .,-~:;=!*#$@"[ci];
 
             double t = fmod((value + 1.0) * 0.5 + time_step * 0.025, 1.0);
@@ -137,7 +150,7 @@ void render_plasma() {
 // ===== Mode 2: Julia Set Fractal =====
 void render_mandelbrot() {
     double cr = -0.7269 + 0.18 * sin(time_step * 0.067);
-    double ci =  0.1889 + 0.18 * cos(time_step * 0.053);
+    double ci = 0.1889 + 0.18 * cos(time_step * 0.053);
     double zoom = 2.0 + 0.8 * sin(time_step * 0.031);
     double aspect = 2.0;
     int max_iter = 64;
@@ -167,7 +180,8 @@ void render_mandelbrot() {
                 double abs_z = sqrt(zr * zr + zi * zi);
                 double smooth = iter + 1.0 - log(log(abs_z)) / log2;
                 double t = fmod(smooth * 0.1 + time_step * 0.04, 1.0);
-                if (t < 0) t += 1.0;
+                if (t < 0)
+                    t += 1.0;
                 color_idx = (int)(t * 15.999);
                 ch = " .:-=+*#%@"[(int)fabs(fmod(smooth, 10.0))];
             }
@@ -198,7 +212,11 @@ void init_particles() {
 
 void render_particles() {
     static int inited = 0;
-    if (!inited) { init_particles(); fb_clear(); inited = 1; }
+    if (!inited) {
+        init_particles();
+        fb_clear();
+        inited = 1;
+    }
 
     fb_fade(1);
 
@@ -217,13 +235,19 @@ void render_particles() {
         pvy[i] += dy1 / d1_sq * 3.0 + dy2 / d2_sq * 2.0;
         pvx[i] += sin(time_step + py[i] * 0.05) * 0.008;
         pvy[i] += cos(time_step * 1.3 + px[i] * 0.07) * 0.008;
-        pvx[i] *= 0.97; pvy[i] *= 0.97;
-        px[i] += pvx[i]; py[i] += pvy[i];
+        pvx[i] *= 0.97;
+        pvy[i] *= 0.97;
+        px[i] += pvx[i];
+        py[i] += pvy[i];
 
-        if (px[i] < 0) px[i] += cols;
-        if (px[i] >= cols) px[i] -= cols;
-        if (py[i] < 0) py[i] += rows;
-        if (py[i] >= rows) py[i] -= rows;
+        if (px[i] < 0)
+            px[i] += cols;
+        if (px[i] >= cols)
+            px[i] -= cols;
+        if (py[i] < 0)
+            py[i] += rows;
+        if (py[i] >= rows)
+            py[i] -= rows;
 
         double speed = sqrt(pvx[i] * pvx[i] + pvy[i] * pvy[i]);
         int intensity = 10 + (int)(fmin(speed * 5, 1.0) * 5);
@@ -244,20 +268,22 @@ void render_quantum_flow() {
             double fx = (double)x / cols * 6.0;
             double fy = (double)y / rows * 6.0;
 
-            double v = sin(fx * 1.5 + t * 0.3) * cos(fy * 1.2 + t * 0.2)
-                     + sin(fx * 3.0 + fy * 2.0 + t * 0.5) * 0.5
-                     + cos(fx * 0.7 - t * 0.15) * sin(fy * 2.5 + t * 0.25) * 0.7
-                     + sin((fx + fy) * 2.0 + t * 0.4) * 0.3;
+            double v = sin(fx * 1.5 + t * 0.3) * cos(fy * 1.2 + t * 0.2) +
+                       sin(fx * 3.0 + fy * 2.0 + t * 0.5) * 0.5 +
+                       cos(fx * 0.7 - t * 0.15) * sin(fy * 2.5 + t * 0.25) * 0.7 +
+                       sin((fx + fy) * 2.0 + t * 0.4) * 0.3;
 
-            double vdx = cos(fx * 1.5 + t * 0.3) * 1.5 * cos(fy * 1.2 + t * 0.2)
-                        + cos(fx * 3.0 + fy * 2.0 + t * 0.5) * 1.5;
-            double vdy = -sin(fx * 1.5 + t * 0.3) * sin(fy * 1.2 + t * 0.2) * 1.2
-                        + cos(fx * 3.0 + fy * 2.0 + t * 0.5) * 1.0;
+            double vdx = cos(fx * 1.5 + t * 0.3) * 1.5 * cos(fy * 1.2 + t * 0.2) +
+                         cos(fx * 3.0 + fy * 2.0 + t * 0.5) * 1.5;
+            double vdy = -sin(fx * 1.5 + t * 0.3) * sin(fy * 1.2 + t * 0.2) * 1.2 +
+                         cos(fx * 3.0 + fy * 2.0 + t * 0.5) * 1.0;
             double speed = sqrt(vdx * vdx + vdy * vdy);
 
             double density = (v + 2.5) / 5.0;
-            if (density < 0) density = 0;
-            if (density > 1) density = 1;
+            if (density < 0)
+                density = 0;
+            if (density > 1)
+                density = 1;
 
             char ch;
             if (density < 0.08) {
@@ -265,7 +291,7 @@ void render_quantum_flow() {
             } else if (speed > 1.5) {
                 double angle = atan2(vdy, vdx);
                 int dir = ((int)round(angle * 4.0 / PI) % 8 + 8) % 8;
-                char dirs[] = "-\\|/-\\|/";
+                const char dirs[] = "-\\|/-\\|/";
                 ch = dirs[dir];
             } else {
                 int di = (int)(density * 7.999);
@@ -273,7 +299,8 @@ void render_quantum_flow() {
             }
 
             double ct = fmod(density * 0.7 + v * 0.15 + t * 0.03, 1.0);
-            if (ct < 0) ct += 1.0;
+            if (ct < 0)
+                ct += 1.0;
             int color_idx = (int)(ct * 15.999);
             int color = palette[color_idx];
             if (color != prev_color) {
@@ -289,7 +316,7 @@ void render_quantum_flow() {
 
 // ===== Mode 5: Orbital Harmony =====
 void render_orbitals() {
-    #define N_ORBIT 12
+#define N_ORBIT 12
     static double otheta[N_ORBIT], orr[N_ORBIT], oomega[N_ORBIT], ophase[N_ORBIT];
     static double oecc[N_ORBIT];
     static int inited = 0;
@@ -324,8 +351,7 @@ void render_orbitals() {
         orr[i] = fmax(5.0, fmin(r_cap, orr[i] * 0.998));
         otheta[i] += oomega[i] + 0.008 * sin(time_step * 0.7 + i * 0.5);
 
-        double orbit_r = orr[i] * (1.0 - oecc[i] * oecc[i])
-                       / (1.0 + oecc[i] * cos(otheta[i]));
+        double orbit_r = orr[i] * (1.0 - oecc[i] * oecc[i]) / (1.0 + oecc[i] * cos(otheta[i]));
         double opx = cx + orbit_r * cos(otheta[i]) * 2.0;
         double opy = cy + orbit_r * sin(otheta[i]);
 
@@ -365,7 +391,8 @@ void render_rainfall() {
 
         int ix = (int)drop_x[i], iy = (int)drop_y[i];
         int bright = 6 + (int)(drop_speed[i] * 12);
-        if (bright > 15) bright = 15;
+        if (bright > 15)
+            bright = 15;
 
         fb_stamp(ix, iy, bright);
         fb_stamp(ix, iy - 1, bright * 2 / 3);
@@ -425,22 +452,25 @@ void render_aurora() {
             }
 
             // Vertical falloff: bright at top, dim at bottom
-            double vertical = exp(-fy * 2.5)
-                             * (1.0 + 0.3 * sin(fy * PI * 3 + time_step * 0.2));
+            double vertical = exp(-fy * 2.5) * (1.0 + 0.3 * sin(fy * PI * 3 + time_step * 0.2));
 
             // High-frequency shimmer
             double shimmer = 0.7 + 0.3 * sin(fx * 20 + fy * 5 + time_step * 2.0);
 
             double intensity = (curtain + 0.5) * vertical * shimmer;
-            if (intensity < 0) intensity = 0;
-            if (intensity > 1) intensity = 1;
+            if (intensity < 0)
+                intensity = 0;
+            if (intensity > 1)
+                intensity = 1;
 
             int ci = (int)(intensity * 12.999);
-            if (ci > 12) ci = 12;
+            if (ci > 12)
+                ci = 12;
             char ch = " .,-~:;=!*#$@"[ci];
 
             double ct = fmod(fx * 0.3 + curtain * 0.5 + time_step * 0.02, 1.0);
-            if (ct < 0) ct += 1.0;
+            if (ct < 0)
+                ct += 1.0;
             int color_idx = (int)(ct * 15.999);
             int color = palette[color_idx];
             if (color != prev_color) {
@@ -489,8 +519,10 @@ void render_starfield() {
         int ix = (int)sx, iy = (int)sy;
 
         int bright = (int)((1.0 - star_z[i] / 25.0) * 15);
-        if (bright < 1) bright = 1;
-        if (bright > 15) bright = 15;
+        if (bright < 1)
+            bright = 1;
+        if (bright > 15)
+            bright = 15;
 
         fb_stamp(ix, iy, bright);
 
@@ -526,10 +558,14 @@ void render_metaballs() {
     for (int i = 0; i < N_BLOBS; i++) {
         blob_vx[i] += sin(time_step * 0.3 + i * 2.0) * 0.02;
         blob_vy[i] += cos(time_step * 0.2 + i * 1.5) * 0.02;
-        blob_vx[i] *= 0.99; blob_vy[i] *= 0.99;
-        blob_x[i] += blob_vx[i]; blob_y[i] += blob_vy[i];
-        if (blob_x[i] < 2 || blob_x[i] > cols - 2) blob_vx[i] *= -1;
-        if (blob_y[i] < 2 || blob_y[i] > rows - 2) blob_vy[i] *= -1;
+        blob_vx[i] *= 0.99;
+        blob_vy[i] *= 0.99;
+        blob_x[i] += blob_vx[i];
+        blob_y[i] += blob_vy[i];
+        if (blob_x[i] < 2 || blob_x[i] > cols - 2)
+            blob_vx[i] *= -1;
+        if (blob_y[i] < 2 || blob_y[i] > rows - 2)
+            blob_vy[i] *= -1;
         blob_x[i] = fmax(1, fmin(cols - 1, blob_x[i]));
         blob_y[i] = fmax(1, fmin(rows - 1, blob_y[i]));
         blob_r[i] = 5.0 + 2.0 * sin(time_step * 0.5 + i * PI / 3);
@@ -614,9 +650,9 @@ void render_life() {
                 int neighbors = 0;
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dx = -1; dx <= 1; dx++) {
-                        if (dx == 0 && dy == 0) continue;
-                        neighbors += life_grid[(y + dy + rows) % rows]
-                                              [(x + dx + cols) % cols];
+                        if (dx == 0 && dy == 0)
+                            continue;
+                        neighbors += life_grid[(y + dy + rows) % rows][(x + dx + cols) % cols];
                     }
                 if (life_grid[y][x])
                     next[y][x] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
@@ -648,7 +684,8 @@ void render_life() {
             if (life_grid[y][x]) {
                 int age = life_age[y][x];
                 color_idx = 15 - age;
-                if (color_idx < 1) color_idx = 1;
+                if (color_idx < 1)
+                    color_idx = 1;
                 ch = age < 2 ? '@' : age < 5 ? '#' : age < 10 ? '*' : '.';
             } else {
                 ch = ' ';
@@ -670,16 +707,36 @@ void render_life() {
 // ===== Mode dispatch =====
 void render_mode(int m) {
     switch (m) {
-        case 1:  render_plasma(); break;
-        case 2:  render_mandelbrot(); break;
-        case 3:  render_particles(); break;
-        case 4:  render_quantum_flow(); break;
-        case 5:  render_orbitals(); break;
-        case 6:  render_rainfall(); break;
-        case 7:  render_aurora(); break;
-        case 8:  render_starfield(); break;
-        case 9:  render_metaballs(); break;
-        case 10: render_life(); break;
+    case 1:
+        render_plasma();
+        break;
+    case 2:
+        render_mandelbrot();
+        break;
+    case 3:
+        render_particles();
+        break;
+    case 4:
+        render_quantum_flow();
+        break;
+    case 5:
+        render_orbitals();
+        break;
+    case 6:
+        render_rainfall();
+        break;
+    case 7:
+        render_aurora();
+        break;
+    case 8:
+        render_starfield();
+        break;
+    case 9:
+        render_metaballs();
+        break;
+    case 10:
+        render_life();
+        break;
     }
 }
 
@@ -693,22 +750,20 @@ int main(int argc, char **argv) {
     signal(SIGINT, int_handler);
 
     const char *mode_names[] = {
-        NULL,
-        "Plasma Wave", "Fractal Mandelbrot", "Particle Physics",
-        "Quantum Flow", "Orbital Harmony", "Rainfall",
-        "Aurora Borealis", "Starfield", "Metaballs", "Game of Life"
-    };
+        NULL,           "Plasma Wave",     "Fractal Mandelbrot", "Particle Physics",
+        "Quantum Flow", "Orbital Harmony", "Rainfall",           "Aurora Borealis",
+        "Starfield",    "Metaballs",       "Game of Life"};
 
     if (argc > 1) {
         mode = atoi(argv[1]);
-        if (mode < 1 || mode > MAX_MODES) mode = DEFAULT_MODE;
+        if (mode < 1 || mode > MAX_MODES)
+            mode = DEFAULT_MODE;
     } else {
         mode = (rand() % MAX_MODES) + 1;
     }
 
     printf("\x1b[?1049h" CLEAR_SCREEN MOVE_HOME);
-    printf("ZenRelax Mode %d: %s - Press 'q' or ESC to quit\n",
-           mode, mode_names[mode]);
+    printf("ZenRelax Mode %d: %s - Press 'q' or ESC to quit\n", mode, mode_names[mode]);
     fflush(stdout);
 
     struct termios oldt, newt;
