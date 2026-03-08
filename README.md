@@ -1,14 +1,19 @@
 # zenrelax
 
-A soothing terminal screensaver written in pure C. Five visual modes render calming animations directly in your terminal using ANSI escape codes and 256-color palettes.
+A soothing terminal screensaver written in pure C. Ten visual modes render calming animations directly in your terminal using ANSI escape codes and 256-color palettes.
 
 ## Modes
 
 1. **Plasma Wave** - Layered sine/cosine interference patterns
 2. **Fractal Mandelbrot** - Slowly drifting Julia set exploration
-3. **Particle Physics** - 128 particles with gravity, drag, and wave forces
-4. **Quantum Flow** - Flowing field visualization with layered oscillations
-5. **Orbital Harmony** - 12 orbiting bodies with pulsating glow effects
+3. **Particle Physics** - 128 particles with gravitational attractors and trails
+4. **Quantum Flow** - Flowing field visualization with directional characters
+5. **Orbital Harmony** - 12 orbiting bodies with trails and central body glow
+6. **Rainfall** - Depth-layered raindrops with ripples at the bottom
+7. **Aurora Borealis** - Shimmering curtains of light with vertical falloff
+8. **Starfield** - Deep-space fly-through with perspective and motion streaks
+9. **Metaballs** - Lava lamp blobs that merge and split using distance fields
+10. **Game of Life** - Conway's automata with color aging and periodic seeding
 
 ## Build
 
@@ -19,7 +24,7 @@ gcc zenrelax.c -o zenrelax -lm
 ## Usage
 
 ```
-./zenrelax         # interactive mode selector
+./zenrelax         # random mode
 ./zenrelax 3       # jump straight to Particle Physics
 ```
 
