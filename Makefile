@@ -21,7 +21,11 @@ format:
 lint:
 	cppcheck --enable=all --suppress=missingIncludeSystem $(SRC)
 
+gifs: $(TARGET)
+	@command -v agg > /dev/null || (echo "Install agg: download from https://github.com/asciinema/agg/releases" && exit 1)
+	bash scripts/record-gifs.sh
+
 clean:
 	rm -f $(TARGET)
 
-.PHONY: all debug sanitize format lint clean
+.PHONY: all debug sanitize format lint gifs clean
