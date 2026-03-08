@@ -754,6 +754,18 @@ int main(int argc, char **argv) {
         "Quantum Flow", "Orbital Harmony", "Rainfall",           "Aurora Borealis",
         "Starfield",    "Metaballs",       "Game of Life"};
 
+    if (argc > 1 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
+        printf(SHOW_CURSOR);
+        printf("Usage: zenrelax [MODE]\n\n");
+        printf("A soothing terminal screensaver with %d visual modes.\n\n", MAX_MODES);
+        printf("Modes:\n");
+        for (int i = 1; i <= MAX_MODES; i++)
+            printf("  %2d  %s\n", i, mode_names[i]);
+        printf("\nWith no MODE, a random mode is selected.\n");
+        printf("Press 'q', ESC, or Ctrl+C to quit.\n");
+        return 0;
+    }
+
     if (argc > 1) {
         mode = atoi(argv[1]);
         if (mode < 1 || mode > MAX_MODES)

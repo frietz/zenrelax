@@ -34,6 +34,7 @@ gcc zenrelax.c -o zenrelax -lm
 ```
 ./zenrelax         # random mode
 ./zenrelax 3       # jump straight to Particle Physics
+./zenrelax --help  # show available modes
 ```
 
 Press `q`, `ESC`, or `Ctrl+C` to quit.
