@@ -2,7 +2,8 @@
  * Modes: 1-Plasma, 2-Julia Set, 3-Particles, 4-Quantum Flow, 5-Orbitals
  *        6-Rainfall, 7-Aurora, 8-Starfield, 9-Metaballs, 10-Game of Life
  * Usage: ./zenrelax [mode]  (no arg = random mode, 'q'/ESC/Ctrl+C to quit)
- * Tmux-optimized: SIGWINCH resize, alt screen, raw input, 20fps
+ * Tmux-optimized: SIGWINCH resize, alt screen, raw input, ~25fps stable pacing
+ * Key for smooth output: full-frame buffering + synchronized update sequences (DECRQSS 2026)
  * Compile: gcc zenrelax.c -o zenrelax -lm
  */
 
@@ -32,6 +33,34 @@
 #define MOVE_HOME "\x1b[H"
 #define HIDE_CURSOR "\x1b[?25l"
 #define SHOW_CURSOR "\x1b[?25h"
+
+// Synchronized output (supported by Kitty, iTerm2, WezTerm, Alacritty, etc.)
+// Wraps a full frame so the terminal paints it atomically -> smoother, no tearing/crawl.
+#define SYNC_UPDATE_BEGIN "\x1b[?2026h"
+#define SYNC_UPDATE_END   "\x1b[?2026l"
+
+// Full-frame accumulator: all rows of one frame go here, then ONE fwrite.
+// This + SYNC_ above is the main change for smooth rendering.
+static char framebuf[256 * 1024];
+static size_t framepos = 0;
+
+static inline void frame_reset(void) {
+    framepos = 0;
+}
+
+static inline void frame_append(const char *data, size_t len) {
+    if (framepos + len < sizeof(framebuf)) {
+        memcpy(framebuf + framepos, data, len);
+        framepos += len;
+    }
+}
+
+static inline void frame_emit(void) {
+    if (framepos > 0) {
+        fwrite(framebuf, 1, framepos, stdout);
+        framepos = 0;
+    }
+}
 
 // Color palettes (ANSI 256)
 static const int palette_default[16] = {16, 19, 21, 34, 35, 36, 39, 43, 44, 49, 73, 149, 152, 153, 154, 155};
@@ -108,7 +137,7 @@ void fb_render() {
             buf[pos++] = ch;
         }
         pos += sprintf(buf + pos, "\x1b[0m");
-        fwrite(buf, 1, pos, stdout);
+        frame_append(buf, pos);
     }
 }
 
@@ -196,7 +225,7 @@ void render_mandelbrot() {
             buf[pos++] = ch;
         }
         pos += sprintf(buf + pos, "\x1b[0m");
-        fwrite(buf, 1, pos, stdout);
+        frame_append(buf, pos);
     }
 }
 
@@ -313,7 +342,7 @@ void render_quantum_flow() {
             buf[pos++] = ch;
         }
         pos += sprintf(buf + pos, "\x1b[0m");
-        fwrite(buf, 1, pos, stdout);
+        frame_append(buf, pos);
     }
 }
 
@@ -483,7 +512,7 @@ void render_aurora() {
             buf[pos++] = ch;
         }
         pos += sprintf(buf + pos, "\x1b[0m");
-        fwrite(buf, 1, pos, stdout);
+        frame_append(buf, pos);
     }
 }
 
@@ -611,7 +640,7 @@ void render_metaballs() {
             buf[pos++] = ch;
         }
         pos += sprintf(buf + pos, "\x1b[0m");
-        fwrite(buf, 1, pos, stdout);
+        frame_append(buf, pos);
     }
 }
 
@@ -702,7 +731,7 @@ void render_life() {
             buf[pos++] = ch;
         }
         pos += sprintf(buf + pos, "\x1b[0m");
-        fwrite(buf, 1, pos, stdout);
+        frame_append(buf, pos);
     }
     frame++;
 }
@@ -758,7 +787,7 @@ void render_mode(int m) {
 
 int main(int argc, char **argv) {
     srand(time(NULL));
-    setvbuf(stdout, NULL, _IOFBF, 8192);
+    setvbuf(stdout, NULL, _IOFBF, 256 * 1024);
     printf(HIDE_CURSOR);
     get_term_size();
 
@@ -812,12 +841,35 @@ int main(int argc, char **argv) {
             resize_flag = 0;
         }
 
-        render_mode(mode);
-        fflush(stdout);
-        time_step += 0.1;
+        // Full atomic frame with sync markers for smooth terminal presentation.
+        // All per-row data is now collected via frame_append inside the renderers.
+        struct timespec frame_start;
+        clock_gettime(CLOCK_MONOTONIC, &frame_start);
 
+        frame_reset();
+        frame_append(SYNC_UPDATE_BEGIN, sizeof(SYNC_UPDATE_BEGIN) - 1);
+        render_mode(mode);
+        frame_append(SYNC_UPDATE_END, sizeof(SYNC_UPDATE_END) - 1);
+        frame_emit();
+        fflush(stdout);
+
+        // Stable frame pacing (~25 fps). Sleep only the remainder after this frame's work.
+        // Removes the jitter of the old "always 50ms after work" model.
+        struct timespec frame_end;
+        clock_gettime(CLOCK_MONOTONIC, &frame_end);
+        long work_ns = (frame_end.tv_sec - frame_start.tv_sec) * 1000000000L +
+                       (frame_end.tv_nsec - frame_start.tv_nsec);
+        const long target_ns = 40000000L; // 25 fps target (smoother than original 20)
+        long sleep_ns = target_ns - work_ns;
+        if (sleep_ns > 2000000L) {
+            struct timespec ts = { sleep_ns / 1000000000L, sleep_ns % 1000000000L };
+            nanosleep(&ts, NULL);
+        }
+        time_step += 0.08;  // phase rate tuned for the 25 fps budget
+
+        // Quick input poll (most of the frame time was already spent in nanosleep above)
         fd_set readfds;
-        struct timeval timeout = {0, 50000};
+        struct timeval timeout = {0, 1000};
         FD_ZERO(&readfds);
         FD_SET(STDIN_FILENO, &readfds);
         int activity = select(STDIN_FILENO + 1, &readfds, NULL, NULL, &timeout);
