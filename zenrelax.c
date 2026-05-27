@@ -2,7 +2,7 @@
  * Modes: 1-Plasma, 2-Julia Set, 3-Particles, 4-Quantum Flow, 5-Orbitals
  *        6-Rainfall, 7-Aurora, 8-Starfield, 9-Metaballs, 10-Game of Life
  * Usage: ./zenrelax [mode]  (no arg = random mode, 'q'/ESC/Ctrl+C to quit)
- * Tmux-optimized: SIGWINCH resize, alt screen, raw input, ~25fps stable pacing
+ * Tmux-optimized: SIGWINCH resize, alt screen, raw input, 60 fps stable pacing
  * Key for smooth output: full-frame buffering + synchronized update sequences (DECRQSS 2026)
  * Compile: gcc zenrelax.c -o zenrelax -lm
  */
@@ -26,6 +26,13 @@
 #define MAX_COLS 200
 #define MAX_ROWS 100
 #define PI 3.14159265359
+
+// 60 fps target with preserved artistic phase rate (~2.0 units/sec for all sine-driven effects).
+// Simulation steps (fb_fade, rain, stars, particles, life evolution, etc.) now run at higher
+// temporal density than the original ~20 fps tuning. This yields smoother motion for many
+// modes at the cost of faster apparent "world speed" for physics.
+#define TARGET_FPS 60
+#define PHASE_PER_SEC 2.0
 
 // ANSI escape helpers
 #define CLEAR_LINE "\x1b[2K"
@@ -661,7 +668,7 @@ void render_life() {
         inited = 1;
     }
 
-    // Evolve every 3 frames (~7 gen/sec at 20fps)
+    // Evolve every 3 frames (higher temporal density at 60 fps target; ~20 gens/sec)
     if (frame % 3 == 0) {
         // Periodic random seeding to prevent extinction
         if (frame % 300 == 0) {
@@ -853,19 +860,19 @@ int main(int argc, char **argv) {
         frame_emit();
         fflush(stdout);
 
-        // Stable frame pacing (~25 fps). Sleep only the remainder after this frame's work.
+        // Stable frame pacing (TARGET_FPS). Sleep only the remainder after this frame's work.
         // Removes the jitter of the old "always 50ms after work" model.
         struct timespec frame_end;
         clock_gettime(CLOCK_MONOTONIC, &frame_end);
         long work_ns = (frame_end.tv_sec - frame_start.tv_sec) * 1000000000L +
                        (frame_end.tv_nsec - frame_start.tv_nsec);
-        const long target_ns = 40000000L; // 25 fps target (smoother than original 20)
+        const long target_ns = 1000000000L / TARGET_FPS;
         long sleep_ns = target_ns - work_ns;
         if (sleep_ns > 2000000L) {
             struct timespec ts = { sleep_ns / 1000000000L, sleep_ns % 1000000000L };
             nanosleep(&ts, NULL);
         }
-        time_step += 0.08;  // phase rate tuned for the 25 fps budget
+        time_step += (PHASE_PER_SEC / TARGET_FPS);  // preserve original ~2 units/sec artistic phase rate
 
         // Quick input poll (most of the frame time was already spent in nanosleep above)
         fd_set readfds;
