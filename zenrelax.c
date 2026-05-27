@@ -28,11 +28,12 @@
 #define PI 3.14159265359
 
 // 60 fps target with preserved artistic phase rate (~2.0 units/sec for all sine-driven effects).
-// Simulation steps (fb_fade, rain, stars, particles, life evolution, etc.) now run at higher
-// temporal density than the original ~20 fps tuning. This yields smoother motion for many
-// modes at the cost of faster apparent "world speed" for physics.
 #define TARGET_FPS 60
 #define PHASE_PER_SEC 2.0
+
+// All simulation physics (particles, rain, stars, etc.) now uses real wall-time dt scaling
+// relative to this reference rate. Changing TARGET_FPS no longer changes simulation speed.
+#define SIMULATION_REFERENCE_FPS 25.0
 
 // ANSI escape helpers
 #define CLEAR_LINE "\x1b[2K"
@@ -68,6 +69,10 @@ static inline void frame_emit(void) {
         framepos = 0;
     }
 }
+
+// Global dt (seconds since last simulation step). Updated every frame in main().
+// All per-frame physics/simulation now multiplies rates by this value.
+static double dt = 0.0;
 
 // Color palettes (ANSI 256)
 static const int palette_default[16] = {16, 19, 21, 34, 35, 36, 39, 43, 44, 49, 73, 149, 152, 153, 154, 155};
@@ -114,6 +119,13 @@ void fb_fade(int amount) {
     for (int y = 0; y < rows; y++)
         for (int x = 0; x < cols; x++)
             fb_int[y][x] = fb_int[y][x] > amount ? fb_int[y][x] - amount : 0;
+}
+
+// dt-scaled version: amount_per_second is the fade rate at SIMULATION_REFERENCE_FPS.
+static inline void fb_fade_amount(double amount_per_second) {
+    int amount = (int)(amount_per_second * dt * SIMULATION_REFERENCE_FPS + 0.5);
+    if (amount < 1) amount = 1;
+    fb_fade(amount);
 }
 
 void fb_stamp(int x, int y, int intensity) {
@@ -257,25 +269,26 @@ void render_particles() {
         inited = 1;
     }
 
-    fb_fade(1);
+    fb_fade_amount(25.0);   // was fb_fade(1) at 25 fps reference
 
     double ax1 = cols / 2.0 + cols / 3.0 * sin(time_step * 0.13);
     double ay1 = rows / 2.0 + rows / 3.0 * cos(time_step * 0.11);
     double ax2 = cols / 2.0 + cols / 4.0 * cos(time_step * 0.09);
     double ay2 = rows / 2.0 + rows / 4.0 * sin(time_step * 0.17);
     double soft = 20.0;
+    double sim_scale = dt * SIMULATION_REFERENCE_FPS;
 
     for (int i = 0; i < NPART; i++) {
         double dx1 = ax1 - px[i], dy1 = ay1 - py[i];
         double dx2 = ax2 - px[i], dy2 = ay2 - py[i];
         double d1_sq = dx1 * dx1 + dy1 * dy1 + soft * soft;
         double d2_sq = dx2 * dx2 + dy2 * dy2 + soft * soft;
-        pvx[i] += dx1 / d1_sq * 3.0 + dx2 / d2_sq * 2.0;
-        pvy[i] += dy1 / d1_sq * 3.0 + dy2 / d2_sq * 2.0;
-        pvx[i] += sin(time_step + py[i] * 0.05) * 0.008;
-        pvy[i] += cos(time_step * 1.3 + px[i] * 0.07) * 0.008;
-        pvx[i] *= 0.97;
-        pvy[i] *= 0.97;
+        pvx[i] += (dx1 / d1_sq * 3.0 + dx2 / d2_sq * 2.0) * sim_scale;
+        pvy[i] += (dy1 / d1_sq * 3.0 + dy2 / d2_sq * 2.0) * sim_scale;
+        pvx[i] += sin(time_step + py[i] * 0.05) * 0.008 * sim_scale;
+        pvy[i] += cos(time_step * 1.3 + px[i] * 0.07) * 0.008 * sim_scale;
+        pvx[i] *= pow(0.97, sim_scale);
+        pvy[i] *= pow(0.97, sim_scale);
         px[i] += pvx[i];
         py[i] += pvy[i];
 
@@ -372,9 +385,10 @@ void render_orbitals() {
         inited = 1;
     }
 
-    fb_fade(1);
+    fb_fade_amount(25.0);
     double cx = cols / 2.0, cy = rows / 2.0;
     double r_cap = fmin(rows, cols) / 2.2;
+    double sim_scale = dt * SIMULATION_REFERENCE_FPS;
 
     double glow_r = 3.0 + 1.5 * sin(time_step * 0.8);
     for (int dy = -(int)glow_r - 1; dy <= (int)glow_r + 1; dy++)
@@ -386,9 +400,9 @@ void render_orbitals() {
 
     for (int i = 0; i < N_ORBIT; i++) {
         double puls = 0.03 * sin(time_step * 2.0 + ophase[i]);
-        orr[i] += puls;
-        orr[i] = fmax(5.0, fmin(r_cap, orr[i] * 0.998));
-        otheta[i] += oomega[i] + 0.008 * sin(time_step * 0.7 + i * 0.5);
+        orr[i] += puls * sim_scale;
+        orr[i] = fmax(5.0, fmin(r_cap, orr[i] * pow(0.998, sim_scale)));
+        otheta[i] += (oomega[i] + 0.008 * sin(time_step * 0.7 + i * 0.5)) * sim_scale;
 
         double orbit_r = orr[i] * (1.0 - oecc[i] * oecc[i]) / (1.0 + oecc[i] * cos(otheta[i]));
         double opx = cx + orbit_r * cos(otheta[i]) * 2.0;
@@ -422,11 +436,13 @@ void render_rainfall() {
         inited = 1;
     }
 
-    fb_fade(2);
+    fb_fade_amount(50.0);   // was fb_fade(2) at reference rate
+
+    double sim_scale = dt * SIMULATION_REFERENCE_FPS;
 
     for (int i = 0; i < MAX_DROPS; i++) {
-        drop_y[i] += drop_speed[i];
-        drop_x[i] += sin(time_step * 0.3 + drop_x[i] * 0.01) * 0.15;
+        drop_y[i] += drop_speed[i] * sim_scale;
+        drop_x[i] += sin(time_step * 0.3 + drop_x[i] * 0.01) * 0.15 * sim_scale;
 
         int ix = (int)drop_x[i], iy = (int)drop_y[i];
         int bright = 6 + (int)(drop_speed[i] * 12);
@@ -464,8 +480,8 @@ void render_rainfall() {
                 fb_stamp(rcx - rad + 1, ry, intensity / 2);
                 fb_stamp(rcx + rad - 1, ry, intensity / 2);
             }
-            ripple_r[r] += 0.6;
-            ripple_int[r] *= 0.88;
+            ripple_r[r] += 0.6 * sim_scale;
+            ripple_int[r] *= pow(0.88, sim_scale);
         }
     }
     fb_render();
@@ -539,13 +555,14 @@ void render_starfield() {
         inited = 1;
     }
 
-    fb_fade(3);
+    fb_fade_amount(75.0);   // was fb_fade(3)
 
+    double sim_scale = dt * SIMULATION_REFERENCE_FPS;
     double cx = cols / 2.0, cy = rows / 2.0;
     double scale = rows * 0.6;
 
     for (int i = 0; i < MAX_STARS; i++) {
-        star_z[i] -= 0.08;
+        star_z[i] -= 0.08 * sim_scale;
 
         if (star_z[i] <= 0.3) {
             star_x[i] = (rand() % 2000 - 1000) / 100.0;
@@ -567,7 +584,7 @@ void render_starfield() {
 
         // Motion streak for close stars
         if (star_z[i] < 4.0) {
-            double prev_z = star_z[i] + 0.08;
+            double prev_z = star_z[i] + 0.08 * sim_scale;
             int pix = (int)(cx + star_x[i] / prev_z * scale * 2.0);
             int piy = (int)(cy + star_y[i] / prev_z * scale);
             fb_stamp(pix, piy, bright / 2);
@@ -594,11 +611,13 @@ void render_metaballs() {
         inited = 1;
     }
 
+    double sim_scale = dt * SIMULATION_REFERENCE_FPS;
+
     for (int i = 0; i < N_BLOBS; i++) {
-        blob_vx[i] += sin(time_step * 0.3 + i * 2.0) * 0.02;
-        blob_vy[i] += cos(time_step * 0.2 + i * 1.5) * 0.02;
-        blob_vx[i] *= 0.99;
-        blob_vy[i] *= 0.99;
+        blob_vx[i] += sin(time_step * 0.3 + i * 2.0) * 0.02 * sim_scale;
+        blob_vy[i] += cos(time_step * 0.2 + i * 1.5) * 0.02 * sim_scale;
+        blob_vx[i] *= pow(0.99, sim_scale);
+        blob_vy[i] *= pow(0.99, sim_scale);
         blob_x[i] += blob_vx[i];
         blob_y[i] += blob_vy[i];
         if (blob_x[i] < 2 || blob_x[i] > cols - 2)
@@ -655,9 +674,15 @@ void render_metaballs() {
 static unsigned char life_grid[MAX_ROWS][MAX_COLS];
 static unsigned char life_age[MAX_ROWS][MAX_COLS];
 
+// Life evolution target: ~8 generations per second at reference rate.
+// This replaces the old "every 3 frames at ~25 fps" behavior.
+#define LIFE_GENERATIONS_PER_SEC 8.0
+#define LIFE_RESEED_INTERVAL_SEC 12.0   // roughly the old "every 300 frames at 25 fps"
+
 void render_life() {
     static int inited = 0;
-    static int frame = 0;
+    static double evolve_accum = 0.0;
+    static double reseed_accum = 0.0;
 
     if (!inited) {
         for (int y = 0; y < rows; y++)
@@ -668,10 +693,19 @@ void render_life() {
         inited = 1;
     }
 
-    // Evolve every 3 frames (higher temporal density at 60 fps target; ~20 gens/sec)
-    if (frame % 3 == 0) {
+    evolve_accum += dt;
+    reseed_accum += dt;
+
+    int should_evolve = 0;
+    if (evolve_accum >= (1.0 / LIFE_GENERATIONS_PER_SEC)) {
+        should_evolve = 1;
+        evolve_accum -= (1.0 / LIFE_GENERATIONS_PER_SEC);
+    }
+
+    if (should_evolve) {
         // Periodic random seeding to prevent extinction
-        if (frame % 300 == 0) {
+        if (reseed_accum >= LIFE_RESEED_INTERVAL_SEC) {
+            reseed_accum -= LIFE_RESEED_INTERVAL_SEC;
             int sx = rand() % cols, sy = rand() % rows;
             for (int dy = -5; dy <= 5; dy++)
                 for (int dx = -5; dx <= 5; dx++)
@@ -740,7 +774,6 @@ void render_life() {
         pos += sprintf(buf + pos, "\x1b[0m");
         frame_append(buf, pos);
     }
-    frame++;
 }
 
 // ===== Mode dispatch =====
@@ -852,6 +885,15 @@ int main(int argc, char **argv) {
         // All per-row data is now collected via frame_append inside the renderers.
         struct timespec frame_start;
         clock_gettime(CLOCK_MONOTONIC, &frame_start);
+
+        // Compute real elapsed time since last simulation step (in seconds).
+        // This includes the sleep we just performed, giving correct wall-time behavior.
+        static struct timespec prev_sim_time = {0, 0};
+        if (prev_sim_time.tv_sec != 0 || prev_sim_time.tv_nsec != 0) {
+            dt = (frame_start.tv_sec  - prev_sim_time.tv_sec) +
+                 (frame_start.tv_nsec - prev_sim_time.tv_nsec) / 1e9;
+        }
+        prev_sim_time = frame_start;
 
         frame_reset();
         frame_append(SYNC_UPDATE_BEGIN, sizeof(SYNC_UPDATE_BEGIN) - 1);
